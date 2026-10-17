@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>html{color-scheme:light}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Démineur</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Figtree:wght@400;600&display=swap">
+<style>
+/* Layout : une colonne de jeu — compteurs en haut, plateau à la largeur de l'écran, outils sous le pouce */
+:root {
+  --bg: #e7ecf0;
+  --panel: #f5f7f9;
+  --tile: #c6d0da;
+  --tile-hi: #dfe6ec;
+  --tile-lo: #a6b3bf;
+  --open: #f7f9fb;
+  --grid: #cfd8e0;
+  --fg: #1c2632;
+  --muted: #5a6775;
+  --accent: #e4572e;
+  --accent-fg: #ffffff;
+  --ok: #2c8655;
+  --n1: #2361c8; --n2: #2a8548; --n3: #cf3a2d; --n4: #5a3bc2;
+  --n5: #9c4417; --n6: #0d8585; --n7: #1c2632; --n8: #6b7785;
+  --display: "Chakra Petch", ui-monospace, "SF Mono", Menlo, monospace;
+  --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10151b; --panel: #171f28; --tile: #33404e; --tile-hi: #445365; --tile-lo: #242e39;
+    --open: #1b232d; --grid: #29333f; --fg: #e5ebf1; --muted: #93a2b2;
+    --accent: #ff7a4d; --accent-fg: #1a0d07; --ok: #4cc184;
+    --n1: #6aa6ff; --n2: #5fd38a; --n3: #ff7466; --n4: #b39bff;
+    --n5: #f0a060; --n6: #4fd6d6; --n7: #e5ebf1; --n8: #93a2b2;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10151b; --panel: #171f28; --tile: #33404e; --tile-hi: #445365; --tile-lo: #242e39;
+  --open: #1b232d; --grid: #29333f; --fg: #e5ebf1; --muted: #93a2b2;
+  --accent: #ff7a4d; --accent-fg: #1a0d07; --ok: #4cc184;
+  --n1: #6aa6ff; --n2: #5fd38a; --n3: #ff7466; --n4: #b39bff;
+  --n5: #f0a060; --n6: #4fd6d6; --n7: #e5ebf1; --n8: #93a2b2;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--body);
+  font-size: 15px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px 24px;
+  -webkit-tap-highlight-color: transparent;
+}
+.app { width: 100%; max-width: 1000px; margin-inline: auto; display: flex; flex-direction: column; gap: 14px; }
+
+header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+h1 { margin: 0; font: 700 1.5rem/1 var(--display); letter-spacing: 0.02em; text-wrap: balance; }
+h1 span { color: var(--accent); }
+
+.levels { display: flex; background: var(--panel); border: 1px solid var(--grid); border-radius: 10px; padding: 3px; gap: 2px; }
+.levels button {
+  border: 0; background: transparent; color: var(--muted); font: 600 0.85rem var(--body);
+  padding: 7px 11px; border-radius: 7px; cursor: pointer;
+}
+.levels button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+
+.bar {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
+  background: var(--panel); border: 1px solid var(--grid); border-radius: 12px; padding: 8px 12px;
+}
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat:last-child { align-items: flex-end; }
+.stat small { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); font-weight: 600; }
+.stat b { font: 700 1.45rem/1 var(--display); font-variant-numeric: tabular-nums; }
+#restart {
+  border: 0; border-radius: 9px; background: var(--accent); color: var(--accent-fg);
+  font: 700 0.9rem var(--display); letter-spacing: 0.04em; padding: 10px 14px; cursor: pointer;
+}
+
+.board-wrap { container-type: inline-size; width: 100%; }
+.board {
+  display: grid; grid-template-columns: repeat(var(--cols), 1fr); gap: 2px;
+  width: 100%; max-width: calc(var(--cols) * 44px); margin-inline: auto;
+  padding: 2px; background: var(--grid); border-radius: 8px;
+  touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+.board.won { outline: 3px solid var(--ok); outline-offset: 3px; }
+.cell {
+  aspect-ratio: 1; min-width: 0; border: 0; padding: 0; margin: 0;
+  display: grid; place-items: center; cursor: pointer; border-radius: 3px;
+  background: var(--tile); color: var(--fg);
+  box-shadow: inset 2px 2px 0 var(--tile-hi), inset -2px -2px 0 var(--tile-lo);
+  font: 700 min(calc(100cqi / var(--cols) * 0.56), 24px)/1 var(--display);
+  -webkit-touch-callout: none;
+}
+.cell:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 1; }
+.cell.open { background: var(--open); box-shadow: none; border-radius: 1px; cursor: default; }
+.cell.boom { background: var(--accent); }
+.cell svg { width: 62%; height: 62%; display: block; }
+.ic-pole { stroke: var(--fg); fill: none; }
+.ic-flag { fill: var(--accent); }
+.ic-mine { fill: var(--fg); }
+.ic-shine { fill: var(--open); }
+.boom .ic-mine { fill: var(--accent-fg); }
+.boom .ic-shine { fill: var(--accent); }
+.cell.wrong { position: relative; }
+.cell.wrong::after {
+  content: ""; position: absolute; inset: 18%;
+  background: linear-gradient(45deg, transparent 44%, var(--n3) 44% 56%, transparent 56%);
+}
+.n1 { color: var(--n1); } .n2 { color: var(--n2); } .n3 { color: var(--n3); } .n4 { color: var(--n4); }
+.n5 { color: var(--n5); } .n6 { color: var(--n6); } .n7 { color: var(--n7); } .n8 { color: var(--n8); }
+
+.tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+#mode {
+  display: inline-flex; align-items: center; gap: 10px; cursor: pointer;
+  border: 1px solid var(--grid); background: var(--panel); color: var(--fg);
+  font: 600 0.95rem var(--body); padding: 10px 16px 10px 12px; border-radius: 999px;
+}
+#mode .sw { width: 22px; height: 22px; display: grid; place-items: center; }
+#mode .sw svg { width: 100%; height: 100%; }
+#mode[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+#mode[aria-pressed="true"] .ic-flag { fill: var(--accent-fg); }
+#mode[aria-pressed="true"] .ic-pole { stroke: var(--accent-fg); }
+#msg { margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.45; max-width: 65ch; min-height: 1.45em; }
+#msg.good { color: var(--ok); font-weight: 600; }
+#msg.bad { color: var(--n3); font-weight: 600; }
+.best { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .board.lost { animation: shake 0.35s ease-out; }
+  @keyframes shake { 20% { transform: translateX(-5px); } 45% { transform: translateX(4px); } 70% { transform: translateX(-2px); } }
+}
+</style>
+
+<div class="app">
+  <header>
+    <h1>Démin<span>eur</span></h1>
+    <div class="levels" role="group" aria-label="Niveau">
+      <button type="button" id="lv-easy" data-level="easy">Débutant</button>
+      <button type="button" id="lv-mid" data-level="mid">Intermédiaire</button>
+      <button type="button" id="lv-hard" data-level="hard">Expert</button>
+    </div>
+  </header>
+
+  <div class="bar">
+    <div class="stat"><small>Mines</small><b id="mines">10</b></div>
+    <button type="button" id="restart">Nouvelle partie</button>
+    <div class="stat"><small>Temps</small><b id="time">0:00</b></div>
+  </div>
+
+  <div class="board-wrap"><div class="board" id="board" style="--cols:9"></div></div>
+
+  <div class="tools">
+    <button type="button" id="mode" aria-pressed="false">
+      <span class="sw" aria-hidden="true"></span><span id="mode-label">Mode drapeau : désactivé</span>
+    </button>
+    <span class="best" id="best"></span>
+  </div>
+  <p id="msg" aria-live="polite"></p>
+</div>
+
+<script>
+(() => {
+  const LEVELS = {
+    easy: { label: 'Débutant', r: 9, c: 9, m: 10 },
+    mid: { label: 'Intermédiaire', r: 16, c: 16, m: 40 },
+    hard: { label: 'Expert', r: 30, c: 16, m: 99 },
+  };
+  const FLAG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path class="ic-pole" d="M4.5 2v12M3 14h4" stroke-width="1.6" stroke-linecap="round"/><path class="ic-flag" d="M5.3 2.4h7.4l-2.2 3 2.2 3H5.3z"/></svg>';
+  const MINE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path class="ic-mine" d="M7.3 1h1.4v2.1a5 5 0 0 1 2.4 1l1.5-1.5 1 1-1.5 1.5a5 5 0 0 1 1 2.4H15v1.4h-2.1a5 5 0 0 1-1 2.4l1.5 1.5-1 1-1.5-1.5a5 5 0 0 1-2.4 1V15H7.3v-2.1a5 5 0 0 1-2.4-1l-1.5 1.5-1-1 1.5-1.5a5 5 0 0 1-1-2.4H1V7.3h2.1a5 5 0 0 1 1-2.4L2.6 3.4l1-1 1.5 1.5a5 5 0 0 1 2.4-1z"/><circle class="ic-shine" cx="6.4" cy="6.4" r="1.2"/></svg>';
+
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
+  const $ = (id) => document.getElementById(id);
+  const boardEl = $('board');
+
+  let G = null;
+  let timerId = null;
+  let flagMode = false;
+  let cellEls = [];
+
+  function newGame(level) {
+    if (!LEVELS[level]) level = 'easy';
+    const L = LEVELS[level];
+    let r = L.r, c = L.c;
+    // Expert en paysage sur grand écran : on couche la grille.
+    if (level === 'hard' && window.innerWidth >= 900 && window.innerWidth > window.innerHeight) [r, c] = [c, r];
+    G = {
+      level, r, c, m: L.m, state: 'ready', elapsed: 0, opened: 0, flags: 0, boom: -1, record: false,
+      cells: Array.from({ length: r * c }, () => ({ mine: false, open: false, flag: false, n: 0 })),
+    };
+    store.set('ms-level', level);
+    stopTimer();
+    buildBoard();
+    render();
+  }
+
+  function buildBoard() {
+    boardEl.style.setProperty('--cols', G.c);
+    boardEl.textContent = '';
+    cellEls = G.cells.map((_, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cell';
+      b.id = 'c' + i;
+      b.dataset.i = i;
+      boardEl.appendChild(b);
+      return b;
+    });
+    document.querySelectorAll('.levels button').forEach((b) =>
+      b.setAttribute('aria-pressed', b.dataset.level === G.level ? 'true' : 'false'));
+  }
+
+  function neighbors(i) {
+    const r = Math.floor(i / G.c), c = i % G.c, out = [];
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      if (!dr && !dc) continue;
+      const rr = r + dr, cc = c + dc;
+      if (rr >= 0 && rr < G.r && cc >= 0 && cc < G.c) out.push(rr * G.c + cc);
+    }
+    return out;
+  }
+
+  // Le premier coup tombe toujours sur une case vide : ni elle ni ses voisines ne sont minées.
+  function placeMines(safe) {
+    const banned = new Set([safe, ...neighbors(safe)]);
+    const pool = [];
+    for (let i = 0; i < G.cells.length; i++) if (!banned.has(i)) pool.push(i);
+    for (let k = 0; k < G.m; k++) {
+      const j = k + Math.floor(Math.random() * (pool.length - k));
+      [pool[k], pool[j]] = [pool[j], pool[k]];
+      G.cells[pool[k]].mine = true;
+    }
+    G.cells.forEach((cell, i) => { cell.n = neighbors(i).filter((j) => G.cells[j].mine).length; });
+  }
+
+  const over = () => G.state === 'won' || G.state === 'lost';
+
+  function reveal(i) {
+    if (over()) return;
+    const cell = G.cells[i];
+    if (cell.flag) return;
+    if (cell.open) return chord(i);
+    if (G.state === 'ready') { placeMines(i); G.state = 'play'; startTimer(); }
+    if (cell.mine) return lose(i);
+    flood(i);
+    checkWin();
+    render();
+  }
+
+  function flood(i) {
+    const stack = [i];
+    while (stack.length) {
+      const k = stack.pop(), cell = G.cells[k];
+      if (cell.open || cell.flag) continue;
+      cell.open = true;
+      G.opened++;
+      if (cell.n === 0) for (const j of neighbors(k)) if (!G.cells[j].open) stack.push(j);
+    }
+  }
+
+  // Toucher un chiffre déjà entouré du bon nombre de drapeaux ouvre le reste autour.
+  function chord(i) {
+    const cell = G.cells[i];
+    if (!cell.open || !cell.n) return;
+    const ns = neighbors(i);
+    if (ns.filter((j) => G.cells[j].flag).length !== cell.n) return;
+    for (const j of ns) {
+      const c = G.cells[j];
+      if (c.flag || c.open) continue;
+      if (c.mine) return lose(j);
+      flood(j);
+    }
+    checkWin();
+    render();
+  }
+
+  function toggleFlag(i) {
+    if (over()) return;
+    const cell = G.cells[i];
+    if (cell.open) return chord(i);
+    cell.flag = !cell.flag;
+    G.flags += cell.flag ? 1 : -1;
+    buzz(12);
+    render();
+  }
+
+  function lose(i) {
+    G.state = 'lost';
+    G.boom = i;
+    stopTimer(true);
+    buzz([40, 50, 40]);
+    render();
+  }
+
+  function checkWin() {
+    if (G.opened !== G.r * G.c - G.m) return;
+    G.state = 'won';
+    stopTimer(true);
+    G.cells.forEach((c) => { if (c.mine) c.flag = true; });
+    G.flags = G.m;
+    const best = parseFloat(store.get('ms-best-' + G.level));
+    if (!(best <= G.elapsed / 1000)) {
+      store.set('ms-best-' + G.level, (G.elapsed / 1000).toFixed(1));
+      G.record = true;
+    }
+  }
+
+  function startTimer() {
+    G.startedAt = Date.now() - G.elapsed;
+    clearInterval(timerId);
+    timerId = setInterval(() => { G.elapsed = Date.now() - G.startedAt; renderTime(); }, 250);
+  }
+  function stopTimer(final) {
+    if (final && G.startedAt) G.elapsed = Date.now() - G.startedAt;
+    clearInterval(timerId);
+    timerId = null;
+  }
+
+  function buzz(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
+
+  const fmtTime = (ms) => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  const fmtSec = (ms) => (ms / 1000).toFixed(1).replace('.', ',') + ' s';
+
+  function renderTime() { $('time').textContent = fmtTime(G.elapsed); }
+
+  function cellView(i) {
+    const c = G.cells[i], lost = G.state === 'lost';
+    if (c.open) {
+      if (c.n) return ['cell open n' + c.n, String(c.n), c.n + ' mine' + (c.n > 1 ? 's' : '') + ' autour'];
+      return ['cell open', '', 'vide'];
+    }
+    if (lost && i === G.boom) return ['cell open boom', MINE, 'mine touchée'];
+    if (lost && c.flag && !c.mine) return ['cell wrong', FLAG, 'drapeau erroné'];
+    if (lost && c.mine && !c.flag) return ['cell open', MINE, 'mine'];
+    if (c.flag) return ['cell', FLAG, 'drapeau'];
+    return ['cell', '', 'case cachée'];
+  }
+
+  function render() {
+    for (let i = 0; i < cellEls.length; i++) {
+      const [cls, html, label] = cellView(i);
+      const el = cellEls[i], key = cls + '|' + html.length;
+      if (el.dataset.k === key) continue;
+      el.dataset.k = key;
+      el.className = cls;
+      el.innerHTML = html;
+      el.setAttribute('aria-label', label);
+    }
+    $('mines').textContent = G.m - G.flags;
+    renderTime();
+    boardEl.classList.toggle('won', G.state === 'won');
+    boardEl.classList.toggle('lost', G.state === 'lost');
+
+    const msg = $('msg');
+    msg.className = '';
+    if (G.state === 'ready') msg.textContent = 'Touchez une case pour commencer : le premier coup ne tombe jamais sur une mine. Appui long pour poser un drapeau.';
+    else if (G.state === 'play') msg.textContent = 'Touchez un chiffre entouré de tous ses drapeaux pour ouvrir les cases voisines d’un coup.';
+    else if (G.state === 'won') { msg.className = 'good'; msg.textContent = 'Gagné en ' + fmtSec(G.elapsed) + (G.record ? '. Nouveau record !' : '.'); }
+    else { msg.className = 'bad'; msg.textContent = 'Boum. Les mines restantes sont dévoilées, les drapeaux barrés étaient faux.'; }
+
+    const best = store.get('ms-best-' + G.level);
+    $('best').textContent = best ? 'Record ' + LEVELS[G.level].label.toLowerCase() + ' : ' + best.replace('.', ',') + ' s' : '';
+  }
+
+  function renderMode() {
+    const m = $('mode');
+    m.setAttribute('aria-pressed', flagMode ? 'true' : 'false');
+    m.querySelector('.sw').innerHTML = FLAG;
+    $('mode-label').textContent = flagMode ? 'Mode drapeau : activé' : 'Mode drapeau : désactivé';
+  }
+
+  // Tap = action principale, appui long (ou clic droit) = action secondaire.
+  const primary = (i) => (flagMode ? toggleFlag(i) : reveal(i));
+  const secondary = (i) => (flagMode ? reveal(i) : toggleFlag(i));
+
+  let press = null, lastLong = 0;
+  boardEl.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest('.cell');
+    if (!el || e.button !== 0) return;
+    const i = +el.dataset.i;
+    if (press) clearTimeout(press.t);
+    press = { i, x: e.clientX, y: e.clientY, long: false };
+    press.t = setTimeout(() => {
+      if (!press || press.i !== i) return;
+      press.long = true;
+      lastLong = Date.now();
+      secondary(i);
+    }, 380);
+  });
+  boardEl.addEventListener('pointermove', (e) => {
+    if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) { clearTimeout(press.t); press = null; }
+  });
+  boardEl.addEventListener('pointerup', () => {
+    if (!press) return;
+    clearTimeout(press.t);
+    const p = press;
+    press = null;
+    if (!p.long) primary(p.i);
+  });
+  boardEl.addEventListener('pointercancel', () => { if (press) { clearTimeout(press.t); press = null; } });
+  boardEl.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (press || Date.now() - lastLong < 800) return;
+    const el = e.target.closest('.cell');
+    if (el) secondary(+el.dataset.i);
+  });
+  // Clavier : Entrée/Espace révèle, F pose un drapeau.
+  boardEl.addEventListener('click', (e) => {
+    const el = e.target.closest('.cell');
+    if (el && e.detail === 0) primary(+el.dataset.i);
+  });
+  boardEl.addEventListener('keydown', (e) => {
+    const el = e.target.closest('.cell');
+    if (el && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); toggleFlag(+el.dataset.i); }
+  });
+
+  document.querySelectorAll('.levels button').forEach((b) => b.addEventListener('click', () => newGame(b.dataset.level)));
+  $('restart').addEventListener('click', () => newGame(G.level));
+  $('mode').addEventListener('click', () => { flagMode = !flagMode; renderMode(); });
+
+  function start(data) {
+    renderMode();
+    if (data && data.G && data.G.cells) {
+      G = data.G;
+      flagMode = !!data.flagMode;
+      renderMode();
+      buildBoard();
+      render();
+      if (G.state === 'play') startTimer();
+    } else {
+      newGame(store.get('ms-level') || 'easy');
+    }
+  }
+  window.claude?.hot?.snapshot?.(() => ({ G, flagMode }));
+  window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+})();
+</script>
+
+</body>
+</html>
